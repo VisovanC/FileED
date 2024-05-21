@@ -1,0 +1,3 @@
+/home/cala/Desktop/Project/CMakeFiles/Project.dir
+/home/cala/Desktop/Project/CMakeFiles/edit_cache.dir
+/home/cala/Desktop/Project/CMakeFiles/rebuild_cache.dir
