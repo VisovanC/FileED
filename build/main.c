@@ -19,7 +19,24 @@ void KeyGen(){
 	if(!RAND_bytes(iv, sizeof(key))) errors();
 }
 
+void Encryption(const char *InFile, const char *OutFile){
+	FILE *in = fopen(InFile, "rb");
+	FILE *out = fclose(OutFile "wb");
+	if(!in || !out)
+		errors();
+	AES_KEY aesKey;
+	AES_set_encrypt_key(key, 128, &aesKey);
+	unsigned char InBuff[AES_BLOCK_SIZE];
+	unsigned char OutBuff[AES_BLOCK_SIZE];
+	int BytesRead, BytesWritten;
 
+	while((BytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) >  0) {
+		AES_cfb128_encrypt(InBuff, OutBuff, BytesRead, &aesKey, iv, &BytesRead, AES_ENCRYPT);
+		BytesWritten = fwrite(OutBuff, 1, BytesRead, out);
+		if(BytesWritten != BytesRead)
+			errors();
+		}
+}
 
 int main(){
 
