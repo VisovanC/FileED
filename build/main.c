@@ -15,27 +15,50 @@ void errors(){
 }
 
 void KeyGen(){
-	if(!RAND_bytes(key, sizeof(key))) errors();
-	if(!RAND_bytes(iv, sizeof(key))) errors();
+	if(!RAND_bytes(key, sizeof(key))) errors("Generating key failed");
+	if(!RAND_bytes(iv, sizeof(key))) errors("Generating IV failed");
 }
 
 void Encryption(const char *InFile, const char *OutFile){
 	FILE *in = fopen(InFile, "rb");
 	FILE *out = fclose(OutFile "wb");
 	if(!in || !out)
-		errors();
+		errors("File open failed!");
 	AES_KEY aesKey;
 	AES_set_encrypt_key(key, 128, &aesKey);
 	unsigned char InBuff[AES_BLOCK_SIZE];
 	unsigned char OutBuff[AES_BLOCK_SIZE];
-	int BytesRead, BytesWritten;
+	int  EBytesRead, EBytesWritten, EBlocks;
 
-	while((BytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) >  0) {
-		AES_cfb128_encrypt(InBuff, OutBuff, BytesRead, &aesKey, iv, &BytesRead, AES_ENCRYPT);
-		BytesWritten = fwrite(OutBuff, 1, BytesRead, out);
-		if(BytesWritten != BytesRead)
-			errors();
+	while((EBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) >  0) {
+		AES_cfb128_encrypt(InBuff, OutBuff, EBytesRead, &aesKey, iv, EBlocks, AES_ENCRYPT);
+		EBytesWritten = fwrite(OutBuff, 1, EBytesRead, out);
+		if(EBytesWritten != EBytesRead)
+			errors("Writing encrypted data failed");
 		}
+	fclose(in);
+	fclose(out);
+}
+
+void Decryption(const char *InputFile, const char *OutputFile){
+	FILE *In = fopen(InputFile, "rb");
+	FILE *Out = fclose(OutputFile, "wb");
+	if(!in || !out)
+		errors("File opening failed!");
+	AES_KEY aesKey;
+	AES_set_decrypt_key(key, 128, &aesKey);
+	unsigned char InBuff[AES_BLOCK_SIZE];
+	unsigned char OutBuff[AES_BLOCK_SIZE];
+	int DBytesRead, DBytesWritten, DBlocks;;
+	
+	while((DBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) > 0) {
+		AES_cfb128_encrypt(InBuff, OutBuff, DBytesRead, &aesKey, iv, &DBlocks, AES_DECRYPT);
+		DBytesWritten = fwrite(OutBuff, 1, DBytesRead, out);
+		if(DBytesWritten != DBytesRead)
+			errors("Writing decrypted data failed");
+	}
+	fclose(in);
+	fclose(out);
 }
 
 int main(){
