@@ -61,8 +61,29 @@ void Decryption(const char *InputFile, const char *OutputFile){
 	fclose(out);
 }
 
-int main(){
+int main(int argc, char *argv[]){
+	if(argc != 4) {
+		fprintf(stderr, "Usage: %s <encrypt/decrypt> <inputfile> <outputfile>\n", argv[0]);
+		return EXIT_FAILURE;
 
-printf("Hello, world!\n");
-return 0;
+	}
+
+	KeyGen();
+	pid_t p = fork();
+	if(p < 0)
+		errors("Fork failed!");
+	else if (p == 0) {
+		if(strcmp(argv[1], "encrypt") == 0) {
+			Encryption(argv[2], argv[3]);
+		} else if (strcmp (argv[1], "decrypt") == 0 {
+			Decryption(argv[2], argv[3]);
+		} else {
+			fprintf(stderr, "'Unknown operation: %s\n", argv[1]);
+			return EXIT_FAILURE;
+		}
+	return EXIT_SUCCESS;
 }
+
+
+
+
