@@ -7,8 +7,10 @@
 #include <sys/wait.h>
 
 #define KEY_SIZE 16
+#define IV_SIZE 16
+
 unsigned char key[KEY_SIZE];
-unsigned char iv[KEY_SIZE];
+unsigned char iv[IV_SIZE];
 
 void errors(const char *msg) {
     perror(msg);
@@ -22,12 +24,34 @@ void KeyGen() {
         errors("Generating IV failed");
 }
 
-void Encryption(const char *InFile, const char *OutFile) {
-    FILE *in = fopen(InFile, "rb");
-    if (!in) errors("Opening input file failed");
+void SaveKeyGen(const char *keyFile) {
+    FILE *kf = fopen(keyFile, "wb");
+    if (!kf)
+        errors("Opening key file for writing failed");
 
+    fwrite(key, 1, sizeof(key), kf);
+    fwrite(iv, 1, sizeof(iv), kf);
+    fclose(kf);
+}
+
+void LoadKeyGen(const char *keyFile) {
+    FILE *kf = fopen(keyFile, "rb");
+    if (!kf)
+        errors("Opening key file for reading failed");
+
+    fread(key, 1, sizeof(key), kf);
+    fread(iv, 1, sizeof(iv), kf);
+    fclose(kf);
+}
+
+void Encryption(const char *InFile, const char *OutFile, const char *keyFile) {
+    KeyGen();
+    SaveKeyGen(keyFile);
+
+    FILE *in = fopen(InFile, "rb");
     FILE *out = fopen(OutFile, "wb");
-    if (!out) errors("Opening output file failed");
+    if (!in || !out)
+        errors("File open failed");
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (!ctx) errors("EVP_CIPHER_CTX_new failed");
@@ -37,12 +61,10 @@ void Encryption(const char *InFile, const char *OutFile) {
 
     unsigned char inBuf[1024];
     unsigned char outBuf[1024 + EVP_CIPHER_block_size(EVP_aes_128_cfb())];
-    int EBytesRead, outLen;
+    int bytesRead, outLen;
 
-    fwrite(iv, 1, sizeof(iv), out);
-
-    while ((EBytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
-        if (1 != EVP_EncryptUpdate(ctx, outBuf, &outLen, inBuf, EBytesRead))
+    while ((bytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
+        if (1 != EVP_EncryptUpdate(ctx, outBuf, &outLen, inBuf, bytesRead))
             errors("EVP_EncryptUpdate failed");
         fwrite(outBuf, 1, outLen, out);
     }
@@ -56,28 +78,26 @@ void Encryption(const char *InFile, const char *OutFile) {
     fclose(out);
 }
 
-void Decryption(const char *InFile, const char *OutFile) {
+void Decryption(const char *InFile, const char *OutFile, const char *keyFile) {
+    LoadKeyGen(keyFile);
+
     FILE *in = fopen(InFile, "rb");
-    if (!in) errors("Opening input file failed");
-
     FILE *out = fopen(OutFile, "wb");
-    if (!out) errors("Opening output file failed");
-
-    if (fread(iv, 1, sizeof(iv), in) != sizeof(iv)) errors("Reading IV failed");
+    if (!in || !out)
+        errors("File open failed");
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (!ctx) errors("EVP_CIPHER_CTX_new failed");
-
 
     if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv))
         errors("EVP_DecryptInit_ex failed");
 
     unsigned char inBuf[1024];
     unsigned char outBuf[1024 + EVP_CIPHER_block_size(EVP_aes_128_cfb())];
-    int DBytesRead, outLen;
+    int bytesRead, outLen;
 
-    while ((DBytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
-        if (1 != EVP_DecryptUpdate(ctx, outBuf, &outLen, inBuf, DBytesRead))
+    while ((bytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
+        if (1 != EVP_DecryptUpdate(ctx, outBuf, &outLen, inBuf, bytesRead))
             errors("EVP_DecryptUpdate failed");
         fwrite(outBuf, 1, outLen, out);
     }
@@ -92,21 +112,19 @@ void Decryption(const char *InFile, const char *OutFile) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "Usage: %s <encrypt/decrypt> <inputfile> <outputfile>\n", argv[0]);
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s <encrypt/decrypt> <inputfile> <outputfile> <keyfile>\n", argv[0]);
         return EXIT_FAILURE;
     }
-
-    KeyGen();
 
     pid_t p = fork();
     if (p < 0) {
         errors("Fork failed");
     } else if (p == 0) {
         if (strcmp(argv[1], "encrypt") == 0) {
-            Encryption(argv[2], argv[3]);
+            Encryption(argv[2], argv[3], argv[4]);
         } else if (strcmp(argv[1], "decrypt") == 0) {
-            Decryption(argv[2], argv[3]);
+            Decryption(argv[2], argv[3], argv[4]);
         } else {
             fprintf(stderr, "Unknown operation: %s\n", argv[1]);
             return EXIT_FAILURE;
