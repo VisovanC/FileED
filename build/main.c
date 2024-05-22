@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <openssl/aes.h>
+#include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <sys/wait.h>
 
 #define KEY_SIZE 16
 unsigned char key[KEY_SIZE];
-unsigned char iv[AES_BLOCK_SIZE];
+unsigned char iv[KEY_SIZE];
 
 void errors(const char *msg) {
     perror(msg);
@@ -16,63 +16,79 @@ void errors(const char *msg) {
 }
 
 void KeyGen() {
-    if (!RAND_bytes(key, sizeof(key))) 
-    	errors("Generating key failed");
-    if (!RAND_bytes(iv, sizeof(iv))) 
-    	errors("Generating IV failed");
+    if (!RAND_bytes(key, sizeof(key)))
+        errors("Generating key failed");
+    if (!RAND_bytes(iv, sizeof(iv)))
+        errors("Generating IV failed");
 }
 
 void Encryption(const char *InFile, const char *OutFile) {
-    FILE *In = fopen (InFile, "rb");
-    FILE *Out = fopen (OutFile, "wb");
-    if (!In || !Out) 
-    	errors("File open failed");
-    	
-    EVP_CIPHER_CTX *ctx;
-    ctx = EVP_CIPHER_CTX_new();
-    EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+    FILE *in = fopen(InFile, "rb");
+    if (!in) errors("Opening input file failed");
 
-    unsigned char InBuff[AES_BLOCK_SIZE];
-    unsigned char OutBuff[AES_BLOCK_SIZE];
-    int EBytesRead, EBytesWritten;
+    FILE *out = fopen(OutFile, "wb");
+    if (!out) errors("Opening output file failed");
 
-    while ((EBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, In)) > 0) {
-        EVP_EncryptUpdate(ctx, OutBuff, &EBytesWritten, InBuff, EBytesRead);
-        EBytesWritten = fwrite(OutBuff, 1, EBytesRead, Out);
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) errors("EVP_CIPHER_CTX_new failed");
+
+    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv))
+        errors("EVP_EncryptInit_ex failed");
+
+    unsigned char inBuf[1024];
+    unsigned char outBuf[1024 + EVP_CIPHER_block_size(EVP_aes_128_cfb())];
+    int EBytesRead, outLen;
+
+    fwrite(iv, 1, sizeof(iv), out);
+
+    while ((EBytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
+        if (1 != EVP_EncryptUpdate(ctx, outBuf, &outLen, inBuf, EBytesRead))
+            errors("EVP_EncryptUpdate failed");
+        fwrite(outBuf, 1, outLen, out);
     }
-	
-    EVP_EncryptFinal_ex(ctx, OutBuff, &EBytesWritten);
-    fwrite(OutBuff, 1, EBytesWritten, Out);
-    
-    fclose(In);
-    fclose(Out);
+
+    if (1 != EVP_EncryptFinal_ex(ctx, outBuf, &outLen))
+        errors("EVP_EncryptFinal_ex failed");
+    fwrite(outBuf, 1, outLen, out);
+
+    EVP_CIPHER_CTX_free(ctx);
+    fclose(in);
+    fclose(out);
 }
 
 void Decryption(const char *InFile, const char *OutFile) {
-    FILE *In = fopen(InFile, "rb");
-    FILE *Out = fopen(OutFile, "wb");
-    if (!In || !Out)
-    	errors("File open failed");
+    FILE *in = fopen(InFile, "rb");
+    if (!in) errors("Opening input file failed");
 
-    EVP_CIPHER_CTX *ctx;
-    ctx = EVP_CIPHER_CTX_new();
-    EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+    FILE *out = fopen(OutFile, "wb");
+    if (!out) errors("Opening output file failed");
 
-    unsigned char InBuff[AES_BLOCK_SIZE];
-    unsigned char OutBuff[AES_BLOCK_SIZE];
-    int DBytesRead, DBytesWritten;
+    if (fread(iv, 1, sizeof(iv), in) != sizeof(iv)) errors("Reading IV failed");
 
-    while ((DBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, In)) > 0) {
-        EVP_DecryptUpdate(ctx, OutBuff, &DBytesWritten, InBuff, DBytesRead);
-        DBytesWritten = fwrite(OutBuff, 1, DBytesRead, Out);
-        
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) errors("EVP_CIPHER_CTX_new failed");
+
+
+    if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv))
+        errors("EVP_DecryptInit_ex failed");
+
+    unsigned char inBuf[1024];
+    unsigned char outBuf[1024 + EVP_CIPHER_block_size(EVP_aes_128_cfb())];
+    int DBytesRead, outLen;
+
+    while ((DBytesRead = fread(inBuf, 1, sizeof(inBuf), in)) > 0) {
+        if (1 != EVP_DecryptUpdate(ctx, outBuf, &outLen, inBuf, DBytesRead))
+            errors("EVP_DecryptUpdate failed");
+        fwrite(outBuf, 1, outLen, out);
     }
-    
-    EVP_DecryptFinal_ex(ctx, OutBuff, &DBytesWritten);
-    fwrite(OutBuff, 1, DBytesWritten, Out);
 
-    fclose(In);
-    fclose(Out);
+    if (1 != EVP_DecryptFinal_ex(ctx, outBuf, &outLen))
+        errors("EVP_DecryptFinal_ex failed");
+    fwrite(outBuf, 1, outLen, out);
+
+    EVP_CIPHER_CTX_free(ctx);
+    fclose(in);
+    fclose(out);
 }
 
 int main(int argc, char *argv[]) {
