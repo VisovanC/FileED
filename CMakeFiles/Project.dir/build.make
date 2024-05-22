@@ -92,6 +92,8 @@ Project_EXTERNAL_OBJECTS =
 
 Project: CMakeFiles/Project.dir/main.c.o
 Project: CMakeFiles/Project.dir/build.make
+Project: /usr/lib/x86_64-linux-gnu/libssl.so
+Project: /usr/lib/x86_64-linux-gnu/libcrypto.so
 Project: CMakeFiles/Project.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/cala/Desktop/Project/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable Project"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/Project.dir/link.txt --verbose=$(VERBOSE)

@@ -4,86 +4,100 @@
 #include <unistd.h>
 #include <openssl/aes.h>
 #include <openssl/rand.h>
+#include <sys/wait.h>
 
 #define KEY_SIZE 16
 unsigned char key[KEY_SIZE];
 unsigned char iv[AES_BLOCK_SIZE];
 
-void errors(){
-	perror("Error!");
-	exit(EXIT_FAILURE);
+void errors(const char *msg) {
+    perror(msg);
+    exit(EXIT_FAILURE);
 }
 
-void KeyGen(){
-	if(!RAND_bytes(key, sizeof(key))) errors("Generating key failed");
-	if(!RAND_bytes(iv, sizeof(key))) errors("Generating IV failed");
+void KeyGen() {
+    if (!RAND_bytes(key, sizeof(key))) 
+    	errors("Generating key failed");
+    if (!RAND_bytes(iv, sizeof(iv))) 
+    	errors("Generating IV failed");
 }
 
-void Encryption(const char *InFile, const char *OutFile){
-	FILE *in = fopen(InFile, "rb");
-	FILE *out = fclose(OutFile "wb");
-	if(!in || !out)
-		errors("File open failed!");
-	AES_KEY aesKey;
-	AES_set_encrypt_key(key, 128, &aesKey);
-	unsigned char InBuff[AES_BLOCK_SIZE];
-	unsigned char OutBuff[AES_BLOCK_SIZE];
-	int  EBytesRead, EBytesWritten, EBlocks;
+void Encryption(const char *InFile, const char *OutFile) {
+    FILE *In = fopen (InFile, "rb");
+    FILE *Out = fopen (OutFile, "wb");
+    if (!In || !Out) 
+    	errors("File open failed");
+    	
+    EVP_CIPHER_CTX *ctx;
+    ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
 
-	while((EBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) >  0) {
-		AES_cfb128_encrypt(InBuff, OutBuff, EBytesRead, &aesKey, iv, EBlocks, AES_ENCRYPT);
-		EBytesWritten = fwrite(OutBuff, 1, EBytesRead, out);
-		if(EBytesWritten != EBytesRead)
-			errors("Writing encrypted data failed");
-		}
-	fclose(in);
-	fclose(out);
-}
+    unsigned char InBuff[AES_BLOCK_SIZE];
+    unsigned char OutBuff[AES_BLOCK_SIZE];
+    int EBytesRead, EBytesWritten;
 
-void Decryption(const char *InputFile, const char *OutputFile){
-	FILE *In = fopen(InputFile, "rb");
-	FILE *Out = fclose(OutputFile, "wb");
-	if(!in || !out)
-		errors("File opening failed!");
-	AES_KEY aesKey;
-	AES_set_decrypt_key(key, 128, &aesKey);
-	unsigned char InBuff[AES_BLOCK_SIZE];
-	unsigned char OutBuff[AES_BLOCK_SIZE];
-	int DBytesRead, DBytesWritten, DBlocks;;
+    while ((EBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, In)) > 0) {
+        EVP_EncryptUpdate(ctx, OutBuff, &EBytesWritten, InBuff, EBytesRead);
+        EBytesWritten = fwrite(OutBuff, 1, EBytesRead, Out);
+    }
 	
-	while((DBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, in)) > 0) {
-		AES_cfb128_encrypt(InBuff, OutBuff, DBytesRead, &aesKey, iv, &DBlocks, AES_DECRYPT);
-		DBytesWritten = fwrite(OutBuff, 1, DBytesRead, out);
-		if(DBytesWritten != DBytesRead)
-			errors("Writing decrypted data failed");
-	}
-	fclose(in);
-	fclose(out);
+    EVP_EncryptFinal_ex(ctx, OutBuff, &EBytesWritten);
+    fwrite(OutBuff, 1, EBytesWritten, Out);
+    
+    fclose(In);
+    fclose(Out);
 }
 
-int main(int argc, char *argv[]){
-	if(argc != 4) {
-		fprintf(stderr, "Usage: %s <encrypt/decrypt> <inputfile> <outputfile>\n", argv[0]);
-		return EXIT_FAILURE;
+void Decryption(const char *InFile, const char *OutFile) {
+    FILE *In = fopen(InFile, "rb");
+    FILE *Out = fopen(OutFile, "wb");
+    if (!In || !Out)
+    	errors("File open failed");
 
-	}
+    EVP_CIPHER_CTX *ctx;
+    ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
 
-	KeyGen();
-	pid_t p = fork();
-	if(p < 0)
-		errors("Fork failed!");
-	else if (p == 0) {
-		if(strcmp(argv[1], "encrypt") == 0) {
-			Encryption(argv[2], argv[3]);
-		} else if (strcmp (argv[1], "decrypt") == 0 {
-			Decryption(argv[2], argv[3]);
-		} else {
-			fprintf(stderr, "'Unknown operation: %s\n", argv[1]);
-			return EXIT_FAILURE;
-		}
-	return EXIT_SUCCESS;
+    unsigned char InBuff[AES_BLOCK_SIZE];
+    unsigned char OutBuff[AES_BLOCK_SIZE];
+    int DBytesRead, DBytesWritten;
+
+    while ((DBytesRead = fread(InBuff, 1, AES_BLOCK_SIZE, In)) > 0) {
+        EVP_DecryptUpdate(ctx, OutBuff, &DBytesWritten, InBuff, DBytesRead);
+        DBytesWritten = fwrite(OutBuff, 1, DBytesRead, Out);
+        
+    }
+    
+    EVP_DecryptFinal_ex(ctx, OutBuff, &DBytesWritten);
+    fwrite(OutBuff, 1, DBytesWritten, Out);
+
+    fclose(In);
+    fclose(Out);
 }
 
+int main(int argc, char *argv[]) {
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <encrypt/decrypt> <inputfile> <outputfile>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
 
+    KeyGen();
 
+    pid_t p = fork();
+    if (p < 0) {
+        errors("Fork failed");
+    } else if (p == 0) {
+        if (strcmp(argv[1], "encrypt") == 0) {
+            Encryption(argv[2], argv[3]);
+        } else if (strcmp(argv[1], "decrypt") == 0) {
+            Decryption(argv[2], argv[3]);
+        } else {
+            fprintf(stderr, "Unknown operation: %s\n", argv[1]);
+            return EXIT_FAILURE;
+        }
+    } else {
+        wait(NULL);
+    }
 
+    return EXIT_SUCCESS;
+}
